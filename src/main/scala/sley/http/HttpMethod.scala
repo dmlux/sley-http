@@ -2,8 +2,8 @@ package sley.http
 
 /** A syntactically valid, case-sensitive HTTP method name.
   *
-  * Instances are created through [[HttpMethod.fromString]]. The name is a non-empty HTTP token
-  * as defined in RFC 9110, sections 5.6.2 and 9.1. Syntactic validity does not imply that a server
+  * Instances are created through [[HttpMethod.fromString]]. The name is a non-empty HTTP token as
+  * defined in RFC 9110, sections 5.6.2 and 9.1. Syntactic validity does not imply that a server
   * recognizes or supports the method.
   *
   * @param value
@@ -67,9 +67,9 @@ object HttpMethod {
 
   /** Creates a method from a non-empty sequence of HTTP token characters.
     *
-    * Accepts ASCII letters, digits, and the punctuation allowed by the HTTP `tchar` rule.
-    * Preserves case and performs no trimming or normalization. Unknown method names are accepted
-    * if their syntax is valid; server support is checked separately.
+    * Accepts ASCII letters, digits, and the punctuation allowed by the HTTP `tchar` rule. Preserves
+    * case and performs no trimming or normalization. Unknown method names are accepted if their
+    * syntax is valid; server support is checked separately.
     *
     * @param value
     *   the non-null method name to validate
