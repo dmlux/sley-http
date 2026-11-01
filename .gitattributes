@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Preserve exact bytes in binary protocol fixtures.
+*.bin -text -eol
