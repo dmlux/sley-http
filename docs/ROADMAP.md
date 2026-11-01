@@ -12,11 +12,11 @@ Only mark milestones complete after verification.
 ## Milestone 0 — Project Foundation
 
 ### Deliverables
-- [ ] Scala 3 project initialized
-- [ ] sbt build configured
-- [ ] MUnit configured
-- [ ] Repository documentation established
-- [ ] Basic CI pipeline
+- [x] Scala 3 project initialized
+- [x] sbt build configured
+- [x] MUnit configured
+- [x] Repository documentation established
+- [x] Basic CI pipeline
 - [ ] Initial architectural decisions reviewed
 
 ### Exit Criteria
