@@ -1,34 +1,44 @@
 package sley.http
 
-/** Request-line components with a validated method name and raw target and version strings.
+/** The components of an HTTP/1.1 request line as defined in RFC 9112, section 3.
   *
-  * Construction does not validate the request target or version, or enforce their consistency with
-  * the method. This type alone does not guarantee a fully valid HTTP request line.
+  * The method and the request target are syntactically validated domain types. The protocol version
+  * is still the raw string from the request line and is not validated yet.
+  *
+  * A `RequestLine` does not check whether its components fit together, for example whether the
+  * request-target form is allowed for the method. An instance therefore does not guarantee a fully
+  * valid request line.
   *
   * @param method
-  *   the syntactically validated, case-sensitive HTTP method
+  *   the syntactically valid, case-sensitive HTTP method
   * @param requestTarget
-  *   the raw request target, including any query component
+  *   the syntactically valid request target
   * @param version
-  *   the raw protocol version, for example `HTTP/1.1`
+  *   the raw, unvalidated protocol version, for example `HTTP/1.1`
   * @author
   *   Denis-Michael Lux
   */
 case class RequestLine(method: HttpMethod, requestTarget: RequestTarget, version: String)
 
-/** Errors encountered while validating request-line structure and method syntax.
+/** Syntax errors detected while parsing a request line.
+  *
+  * Each case identifies the part of the request line that is invalid. The cases describe protocol
+  * syntax only and do not prescribe an HTTP status code. Mapping errors to responses is the
+  * responsibility of a later layer.
   *
   * @author
   *   Denis-Michael Lux
   */
 enum RequestLineError {
 
-  /** The line contains ASCII control characters or violates the required component structure. */
+  /** The line contains an ASCII control character, or it does not consist of exactly three
+    * non-empty components separated by single spaces.
+    */
   case MalformedRequestLine(message: String)
 
-  /** The method name violates HTTP token syntax; this does not indicate server support. */
+  /** The method violates the HTTP token syntax. This case does not indicate server support. */
   case InvalidMethod(error: HttpMethodError)
 
-  /** The request target violates RFC 9112 specification. */
+  /** The request target violates the syntax of every supported request-target form. */
   case InvalidRequestTarget(error: RequestTargetError)
 }

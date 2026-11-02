@@ -1,26 +1,34 @@
-package sley.http.core
+package sley.http
 
 import sley.http.RequestTargetError
 
 import scala.annotation.tailrec
 
-/** A singleton object providing validation methods for the request target for the different target
-  * forms.
+/** Syntactic validation rules for the components of a request target.
+  *
+  * The rules follow RFC 9112, section 3.2, which builds on the URI syntax of RFC 3986, sections 3.3
+  * and 3.4.
   *
   * @author
   *   Denis-Michael Lux
   */
 private[http] object RequestTargetValidator {
 
-  /** A set of allowed characters of the request line path
+  /** Punctuation permitted unencoded in a path.
+    *
+    * Contains the punctuation of the `unreserved` and `sub-delims` rules, `:` and `@` from the
+    * `pchar` rule of RFC 3986, section 3.3, and the segment separator `/`.
     */
   private val allowedPathCharacters: Set[Char] = "-._~!$&'()*+,;=:@/".toSet
 
-  /** Tests whether the given character is valid in the context of the path within a request line.
+  /** Tests whether a character is permitted unencoded in a path.
+    *
+    * Percent-encodings are validated separately.
+    *
     * @param char
     *   the character to test
     * @return
-    *   `true` if the character is valid or `false` otherwise
+    *   `true` if the character is permitted, otherwise `false`
     */
   private def isValidPathCharacter(char: Char): Boolean = char match
     case c if '0' <= c && c <= '9'              => true
@@ -29,11 +37,12 @@ private[http] object RequestTargetValidator {
     case c if allowedPathCharacters.contains(c) => true
     case _                                      => false
 
-  /** Tests whether the given character is valid hex
+  /** Tests whether a character is an ASCII hexadecimal digit.
+    *
     * @param char
-    *   the character to test.
+    *   the character to test
     * @return
-    *   `true` if the character is a valid hex value or `false` otherwise
+    *   `true` if the character is a hexadecimal digit, otherwise `false`
     */
   private def isValidHex(char: Char): Boolean = char match
     case c if '0' <= c && c <= '9' => true
@@ -41,17 +50,19 @@ private[http] object RequestTargetValidator {
     case c if 'A' <= c && c <= 'F' => true
     case _                         => false
 
-  /** Validates if the given character is a valid request target character independent of the fact
-    * if it is for the path or for the query part of the target. It uses a special validation
-    * function for the character to match the context.
+  /** Validates every character of a request-target component.
+    *
+    * Each character must either satisfy `isValidCharacter` or belong to a percent-encoding, which
+    * is a `%` followed by exactly two hexadecimal digits. A small state machine walks the component
+    * once from left to right.
     *
     * @param rawComponentString
-    *   the raw path of the target
+    *   the raw path or query
     * @param isValidCharacter
-    *   the validation function for the character based on the context this function is used
+    *   the predicate for characters permitted unencoded in this component
     * @return
-    *   either nothing if the character is valid according to the validation function and
-    *   '%'-encoding or a [[RequestTargetError]] otherwise.
+    *   `Right(())` if the component is valid, or a `Left` containing
+    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
     */
   private def validateCharacters(
       rawComponentString: String,
@@ -85,41 +96,41 @@ private[http] object RequestTargetValidator {
     checkCharacter(0, State.Normal)
   }
 
-  /** Validates each character in the path part of the request line. The Check ensures that each
-    * character on its own is valid as well as the `%`-enconding in the path part also is
-    * syntactically correct.
+  /** Validates the characters and percent-encodings of a path.
     *
     * @param rawOriginPath
-    *   the raw path part of the request line.
+    *   the raw path of an origin-form target
     * @return
-    *   either nothing if the path part is syntactically valid or a [[RequestTargetError]]
-    *   otherwise.
+    *   `Right(())` if the path is valid, or a `Left` containing
+    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
     */
   def validatePathCharacters(
       rawOriginPath: String
   ): Either[RequestTargetError, Unit] =
     validateCharacters(rawOriginPath, isValidPathCharacter)
 
-  /** Validates each character in the query part of the request line. The check ensures that each
-    * character on its own is valid as well as the '%'-encoding in the query path also is
-    * syntactically correct.
+  /** Validates the characters and percent-encodings of a query.
+    *
+    * A query permits the same characters as a path plus `?`, as defined in RFC 3986, section 3.4.
     *
     * @param rawQuery
-    *   the raw query part of the request line.
+    *   the raw query without its leading `?`
     * @return
-    *   either nothing if the query part is syntactically valid or a [[RequestTargetError]]
-    *   otherwise.
+    *   `Right(())` if the query is valid, or a `Left` containing
+    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
     */
   def validateQueryCharacters(
       rawQuery: String
   ): Either[RequestTargetError, Unit] =
     validateCharacters(rawQuery, char => char == '?' || isValidPathCharacter(char))
 
-  /** Validates whether the request target is not empty.
+  /** Validates that a request target is not empty.
+    *
     * @param rawRequestTarget
-    *   the raw request target value as a String.
+    *   the raw request target
     * @return
-    *   Either nothing if the target is not empty or [[RequestTargetError]] otherwise.
+    *   `Right(())` if the target is not empty, or a `Left` containing
+    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
     */
   def validateTargetNotEmpty(
       rawRequestTarget: String
@@ -127,11 +138,13 @@ private[http] object RequestTargetValidator {
     if rawRequestTarget.nonEmpty then Right(())
     else Left(RequestTargetError.MalformedRequestTarget("Request target is empty."))
 
-  /** Validates whether the path part of the request target starts with a leading slash
+  /** Validates that a path starts with `/`.
+    *
     * @param rawOriginPath
-    *   the raw request target as a String
+    *   the raw path of an origin-form target
     * @return
-    *   Either nothing if the path starts with `/` or an [[RequestTargetError]] otherwise.
+    *   `Right(())` if the path starts with `/`, or a `Left` containing
+    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
     */
   def validatePathStartWithSlash(
       rawOriginPath: String

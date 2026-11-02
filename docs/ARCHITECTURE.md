@@ -118,6 +118,39 @@ Possible results include:
 
 The specific types and algorithms are not yet decided.
 
+## Syntactic Validation
+
+The HTTP Core currently enforces HTTP message syntax
+only.
+
+Parsers report which syntactic rule an input violates.
+They do not choose HTTP status codes or build responses.
+Mapping protocol errors to responses belongs to a later
+layer and is not yet designed.
+
+Syntactic validity does not imply server support.
+For example, the parser accepts an unknown method name
+if it is a valid HTTP token.
+
+## Request-Line Model
+
+The request line is modeled with small validated
+domain types:
+
+- `HttpMethod`: a value object for a case-sensitive
+  HTTP token.
+- `RequestTarget`: a sealed hierarchy of request-target
+  forms. Only `OriginForm` is implemented. Other forms
+  are rejected as malformed.
+- `RequestLine`: the method, the request target, and the
+  protocol version. The version is still a raw string
+  and is not validated yet.
+
+Validated types are created through smart constructors
+that return `Either`. Each component has its own error
+enum, so callers can tell which part of the request
+line is invalid.
+
 ## State Management
 
 Distinguish:

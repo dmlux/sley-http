@@ -1,15 +1,18 @@
-package sley.http.core
+package sley.http
 
 import sley.http.{HttpMethod, RequestLine, RequestLineError, RequestTarget}
 
-/** Parses request-line structure and method syntax without performing network I/O.
+/** Parses a single HTTP/1.1 request line as defined in RFC 9112, section 3.
+  *
+  * The parser is a pure function without network I/O. It works on the syntactic level only. It
+  * reports which rule a request line violates but does not decide on an HTTP response.
   *
   * @author
   *   Denis-Michael Lux
   */
 object RequestLineParser {
 
-  /** Rejects ASCII control characters (0x00 through 0x1F and 0x7F).
+  /** Rejects ASCII control characters from 0x00 through 0x1F and 0x7F, including horizontal tab.
     *
     * @param requestLine
     *   the non-null line to check
@@ -62,12 +65,13 @@ object RequestLineParser {
       .left
       .map(RequestLineError.InvalidMethod.apply)
 
-  /** Validates request target syntax and translates request target errors into reqest-line errors.
+  /** Validates request-target syntax and translates request-target errors into request-line errors.
+    *
     * @param rawRequestTarget
     *   the non-null request target, preserving its original spelling
     * @return
     *   a `Right` containing the validated [[RequestTarget]], or a `Left` containing
-    *   [[RequestLineError.InvalidRequestTarget]] if the request target syntax is invalid
+    *   [[RequestLineError.InvalidRequestTarget]] if the request-target syntax is invalid
     */
   private def parseRequestTarget(
       rawRequestTarget: String
@@ -77,21 +81,24 @@ object RequestLineParser {
       .left
       .map(RequestLineError.InvalidRequestTarget.apply)
 
-  /** Parses a request line by checking control characters, structure, and method syntax in order.
+  /** Parses a request line into its components.
     *
-    * Rejects ASCII control characters (0x00 through 0x1F and 0x7F) and requires three non-empty
-    * components separated by single ASCII spaces. The method is validated through
-    * [[HttpMethod.fromString]]. All component spellings are preserved without normalization.
+    * Applies these checks in order and returns the first error found:
+    *   1. The line contains no ASCII control characters.
+    *   1. The line consists of three non-empty components separated by single ASCII spaces.
+    *   1. The method is a valid HTTP token, see [[HttpMethod.fromString]].
+    *   1. The request target is in a supported form, see [[RequestTarget.fromString]].
     *
-    * Returns the first validation error. Request-target syntax, version syntax, and server support
-    * are not yet validated; success does not establish complete HTTP request-line validity.
+    * The protocol version is not validated yet and is returned unchanged. All components keep their
+    * original spelling. Whether the server supports the method or the version is not checked.
     *
     * @param requestLine
     *   a non-null, complete request line with its terminating CRLF already removed
     * @return
     *   a `Right` containing the [[RequestLine]], or a `Left` containing
-    *   [[RequestLineError.MalformedRequestLine]] for control-character or structure errors, or
-    *   [[RequestLineError.InvalidMethod]] for invalid method syntax
+    *   [[RequestLineError.MalformedRequestLine]] for control characters or an invalid structure,
+    *   [[RequestLineError.InvalidMethod]] for invalid method syntax, or
+    *   [[RequestLineError.InvalidRequestTarget]] for invalid request-target syntax
     */
   def parse(requestLine: String): Either[RequestLineError, RequestLine] =
     for {

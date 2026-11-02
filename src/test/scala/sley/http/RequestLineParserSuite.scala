@@ -1,6 +1,6 @@
-package sley.http.core
+package sley.http
 
-import sley.http.{HttpMethodError, OriginForm, RequestLineError}
+import sley.http.{HttpMethodError, OriginForm, RequestLineError, RequestLineParser}
 
 class RequestLineParserSuite extends munit.FunSuite {
   test("parse(\"GET /hello HTTP/1.1\")") {
