@@ -14,7 +14,7 @@ package sley.http
   * @author
   *   Denis-Michael Lux
   */
-case class RequestLine(method: HttpMethod, requestTarget: String, version: String)
+case class RequestLine(method: HttpMethod, requestTarget: RequestTarget, version: String)
 
 /** Errors encountered while validating request-line structure and method syntax.
   *
@@ -28,4 +28,7 @@ enum RequestLineError {
 
   /** The method name violates HTTP token syntax; this does not indicate server support. */
   case InvalidMethod(error: HttpMethodError)
+
+  /** The request target violates RFC 9112 specification. */
+  case InvalidRequestTarget(error: RequestTargetError)
 }

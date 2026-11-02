@@ -1,24 +1,38 @@
 package sley.http.core
 
-import sley.http.{HttpMethodError, RequestLineError}
+import sley.http.{HttpMethodError, OriginForm, RequestLineError}
 
 class RequestLineParserSuite extends munit.FunSuite {
   test("parse(\"GET /hello HTTP/1.1\")") {
-    val result = RequestLineParser.parse("GET /hello HTTP/1.1")
+    RequestLineParser.parse("GET /hello HTTP/1.1") match {
+      case Right(line) =>
+        assertEquals(line.method.value, "GET")
+        assertEquals(line.version, "HTTP/1.1")
 
-    assertEquals(
-      result.map(line => (line.method.value, line.requestTarget, line.version)),
-      Right(("GET", "/hello", "HTTP/1.1"))
-    )
+        line.requestTarget match
+          case origin: OriginForm =>
+            assertEquals(origin.path, "/hello")
+            assertEquals(origin.query, None)
+
+      case Left(error) =>
+        fail(s"Expected a valid request line, got $error")
+    }
   }
 
   test("parse(\"CUSTOM /hello HTTP/1.1\")") {
-    val result = RequestLineParser.parse("CUSTOM /hello HTTP/1.1")
+    RequestLineParser.parse("CUSTOM /hello HTTP/1.1") match {
+      case Right(line) =>
+        assertEquals(line.method.value, "CUSTOM")
+        assertEquals(line.version, "HTTP/1.1")
 
-    assertEquals(
-      result.map(line => (line.method.value, line.requestTarget, line.version)),
-      Right(("CUSTOM", "/hello", "HTTP/1.1"))
-    )
+        line.requestTarget match
+          case origin: OriginForm =>
+            assertEquals(origin.path, "/hello")
+            assertEquals(origin.query, None)
+
+      case Left(error) =>
+        fail(s"Expected a valid request line, got $error")
+    }
   }
 
   test("parse(\"GET /hello\")") {

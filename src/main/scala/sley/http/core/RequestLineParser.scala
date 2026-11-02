@@ -1,6 +1,6 @@
 package sley.http.core
 
-import sley.http.{HttpMethod, RequestLine, RequestLineError}
+import sley.http.{HttpMethod, RequestLine, RequestLineError, RequestTarget}
 
 /** Parses request-line structure and method syntax without performing network I/O.
   *
@@ -57,7 +57,25 @@ object RequestLineParser {
     *   [[RequestLineError.InvalidMethod]] if the method syntax is invalid
     */
   private def parseHttpMethod(rawMethod: String): Either[RequestLineError, HttpMethod] =
-    HttpMethod.fromString(rawMethod).left.map(RequestLineError.InvalidMethod.apply)
+    HttpMethod
+      .fromString(rawMethod)
+      .left
+      .map(RequestLineError.InvalidMethod.apply)
+
+  /** Validates request target syntax and translates request target errors into reqest-line errors.
+    * @param rawRequestTarget
+    *   the non-null request target, preserving its original spelling
+    * @return
+    *   a `Right` containing the validated [[RequestTarget]], or a `Left` containing
+    *   [[RequestLineError.InvalidRequestTarget]] if the request target syntax is invalid
+    */
+  private def parseRequestTarget(
+      rawRequestTarget: String
+  ): Either[RequestLineError, RequestTarget] =
+    RequestTarget
+      .fromString(rawRequestTarget)
+      .left
+      .map(RequestLineError.InvalidRequestTarget.apply)
 
   /** Parses a request line by checking control characters, structure, and method syntax in order.
     *
@@ -80,5 +98,6 @@ object RequestLineParser {
       _ <- validateNoControlCharacter(requestLine)
       (rawMethod, rawRequestTarget, rawVersion) <- splitLine(requestLine)
       method <- parseHttpMethod(rawMethod)
-    } yield RequestLine(method, rawRequestTarget, rawVersion)
+      requestTarget <- parseRequestTarget(rawRequestTarget)
+    } yield RequestLine(method, requestTarget, rawVersion)
 }
