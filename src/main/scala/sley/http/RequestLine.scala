@@ -1,23 +1,31 @@
 package sley.http
 
-/** A data container holding the separate positions of the HTTP request line according to RFC 9112
-  * section 3.
+/** Request-line components with a validated method name and raw target and version strings.
+  *
+  * Construction does not validate the request target or version, or enforce their consistency with
+  * the method. This type alone does not guarantee a fully valid HTTP request line.
   *
   * @param method
-  *   The http method of the request
+  *   the syntactically validated, case-sensitive HTTP method
   * @param requestTarget
-  *   The raw request target, including any query component
+  *   the raw request target, including any query component
   * @param version
-  *   The protocol version e.g. "HTTP/1.1"
+  *   the raw protocol version, for example `HTTP/1.1`
   * @author
   *   Denis-Michael Lux
   */
-case class RequestLine(method: String, requestTarget: String, version: String)
+case class RequestLine(method: HttpMethod, requestTarget: String, version: String)
 
-/** An error describing parser errors during HTTP request parsing
+/** Errors encountered while validating request-line structure and method syntax.
   *
   * @author
   *   Denis-Michael Lux
   */
-enum RequestLineError:
+enum RequestLineError {
+
+  /** The line contains ASCII control characters or violates the required component structure. */
   case MalformedRequestLine(message: String)
+
+  /** The method name violates HTTP token syntax; this does not indicate server support. */
+  case InvalidMethod(error: HttpMethodError)
+}

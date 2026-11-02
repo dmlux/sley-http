@@ -37,9 +37,11 @@ final class HttpMethod private (val value: String) {
   * @author
   *   Denis-Michael Lux
   */
-enum HttpMethodError:
+enum HttpMethodError {
+
   /** The name is empty or contains a character that is not permitted in an HTTP token. */
   case InvalidMethodSyntax
+}
 
 /** Validates HTTP method names and provides an extractor for existing [[HttpMethod]] instances.
   *
@@ -58,7 +60,7 @@ object HttpMethod {
     */
   def unapply(method: HttpMethod): Option[String] = Some(method.value)
 
-  /** Tests the ASCII `tchar` rule from RFC 9110, section 5.6.2. */
+  /** Tests the ASCII `char` rule from RFC 9110, section 5.6.2. */
   private def isTokenCharacter(char: Char): Boolean =
     (char >= 'a' && char <= 'z') ||
       (char >= 'A' && char <= 'Z') ||
@@ -81,5 +83,4 @@ object HttpMethod {
     if value.nonEmpty && value.forall(isTokenCharacter) then Right(HttpMethod(value))
     else Left(HttpMethodError.InvalidMethodSyntax)
   }
-
 }
