@@ -59,7 +59,7 @@ object OriginForm {
     * @return
     *   the raw path and the raw query, or `None` as the query if the target contains no `?`
     */
-  private def splitIntoPathAndQuery(rawRequestTarget: String): (String, Option[String]) = {
+  private def separateIntoPathAndQuery(rawRequestTarget: String): (String, Option[String]) = {
     val splitIndex = rawRequestTarget.indexOf('?')
 
     if splitIndex == -1 then (rawRequestTarget, None)
@@ -83,7 +83,7 @@ object OriginForm {
   def fromString(rawRequestTarget: String): Either[RequestTargetError, OriginForm] =
     for {
       _ <- validateTargetNotEmpty(rawRequestTarget)
-      (rawPath, rawQuery) = splitIntoPathAndQuery(rawRequestTarget)
+      (rawPath, rawQuery) = separateIntoPathAndQuery(rawRequestTarget)
 
       _ <- validatePathStartWithSlash(rawPath)
       _ <- validatePathCharacters(rawPath)

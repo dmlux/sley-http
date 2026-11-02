@@ -1,13 +1,16 @@
 package sley.http
 
+import sley.http.CoreRules.isControl
+import sley.http.RequestLineError.{InvalidMethod, InvalidRequestTarget, MalformedRequestLine}
+
 /** The components of an HTTP/1.1 request line as defined in RFC 9112, section 3.
   *
   * The method and the request target are syntactically validated domain types. The protocol version
   * is still the raw string from the request line and is not validated yet.
   *
-  * A `RequestLine` does not check whether its components fit together, for example whether the
-  * request-target form is allowed for the method. An instance therefore does not guarantee a fully
-  * valid request line.
+  * Instances can only be created through [[RequestLine.fromString]]. A `RequestLine` does not check
+  * whether its components fit together, for example whether the request-target form is allowed for
+  * the method. An instance therefore does not guarantee a fully valid request line.
   *
   * @param method
   *   the syntactically valid, case-sensitive HTTP method
@@ -18,7 +21,11 @@ package sley.http
   * @author
   *   Denis-Michael Lux
   */
-case class RequestLine(method: HttpMethod, requestTarget: RequestTarget, version: String)
+final case class RequestLine private (
+    method: HttpMethod,
+    requestTarget: RequestTarget,
+    version: String
+)
 
 /** Syntax errors detected while parsing a request line.
   *
@@ -41,4 +48,105 @@ enum RequestLineError {
 
   /** The request target violates the syntax of every supported request-target form. */
   case InvalidRequestTarget(error: RequestTargetError)
+}
+
+/** Smart constructor for [[RequestLine]].
+  *
+  * Parsing is a pure function without network I/O. It works on the syntactic level only. It reports
+  * which rule a request line violates but does not decide on an HTTP response.
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+object RequestLine {
+
+  /** Rejects ASCII control characters from 0x00 through 0x1F and 0x7F, including horizontal tab.
+    *
+    * @param requestLine
+    *   the non-null line to check
+    * @return
+    *   `Right(())` if no ASCII control character is present, or a `Left` containing
+    *   [[RequestLineError.MalformedRequestLine]] otherwise
+    */
+  private def validateNoControlCharacter(requestLine: String): Either[RequestLineError, Unit] =
+    if requestLine.exists(isControl) then
+      Left(MalformedRequestLine("Request line contains illegal control characters."))
+    else Right(())
+
+  /** Splits a line into three non-empty components separated by single ASCII spaces.
+    *
+    * Does not validate the contents of the individual components.
+    *
+    * @param requestLine
+    *   the non-null line to split
+    * @return
+    *   a `Right` containing the raw method, request target, and version in that order, or a `Left`
+    *   containing [[RequestLineError.MalformedRequestLine]] if the structure is invalid
+    */
+  private def splitLine(requestLine: String): Either[RequestLineError, (String, String, String)] =
+    requestLine.split(" ", -1) match {
+      case Array(method, target, version)
+          if method.nonEmpty && target.nonEmpty && version.nonEmpty =>
+        Right((method, target, version))
+
+      case _ =>
+        Left(
+          MalformedRequestLine("Expected three non-empty components separated by single spaces.")
+        )
+    }
+
+  /** Validates method syntax and translates method errors into request-line errors.
+    *
+    * @param rawMethod
+    *   the non-null method name, preserving its original spelling
+    * @return
+    *   a `Right` containing the validated [[HttpMethod]], or a `Left` containing
+    *   [[RequestLineError.InvalidMethod]] if the method syntax is invalid
+    */
+  private def parseHttpMethod(rawMethod: String): Either[RequestLineError, HttpMethod] = HttpMethod
+    .fromString(rawMethod)
+    .left
+    .map(InvalidMethod.apply)
+
+  /** Validates request-target syntax and translates request-target errors into request-line errors.
+    *
+    * @param rawRequestTarget
+    *   the non-null request target, preserving its original spelling
+    * @return
+    *   a `Right` containing the validated [[RequestTarget]], or a `Left` containing
+    *   [[RequestLineError.InvalidRequestTarget]] if the request-target syntax is invalid
+    */
+  private def parseRequestTarget(
+      rawRequestTarget: String
+  ): Either[RequestLineError, RequestTarget] = RequestTarget
+    .fromString(rawRequestTarget)
+    .left
+    .map(InvalidRequestTarget.apply)
+
+  /** Parses a request line into its components.
+    *
+    * Applies these checks in order and returns the first error found:
+    *   1. The line contains no ASCII control characters.
+    *   1. The line consists of three non-empty components separated by single ASCII spaces.
+    *   1. The method is a valid HTTP token, see [[HttpMethod.fromString]].
+    *   1. The request target is in a supported form, see [[RequestTarget.fromString]].
+    *
+    * The protocol version is not validated yet and is returned unchanged. All components keep their
+    * original spelling. Whether the server supports the method or the version is not checked.
+    *
+    * @param requestLine
+    *   a non-null, complete request line with its terminating CRLF already removed
+    * @return
+    *   a `Right` containing the [[RequestLine]], or a `Left` containing
+    *   [[RequestLineError.MalformedRequestLine]] for control characters or an invalid structure,
+    *   [[RequestLineError.InvalidMethod]] for invalid method syntax, or
+    *   [[RequestLineError.InvalidRequestTarget]] for invalid request-target syntax
+    */
+  def fromString(requestLine: String): Either[RequestLineError, RequestLine] =
+    for {
+      _ <- validateNoControlCharacter(requestLine)
+      (rawMethod, rawRequestTarget, rawVersion) <- splitLine(requestLine)
+      method <- parseHttpMethod(rawMethod)
+      requestTarget <- parseRequestTarget(rawRequestTarget)
+    } yield RequestLine(method, requestTarget, rawVersion)
 }

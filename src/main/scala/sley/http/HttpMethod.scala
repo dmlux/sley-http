@@ -1,5 +1,8 @@
 package sley.http
 
+import sley.http.HttpMethodError.InvalidMethodSyntax
+import sley.http.HttpSyntax.isTChar
+
 /** A syntactically valid HTTP method name.
   *
   * `HttpMethod` is a value object. Its invariant is that `value` is a non-empty HTTP token as
@@ -11,7 +14,6 @@ package sley.http
   *
   * @param value
   *   the validated method name, preserving its original spelling
-  *
   * @author
   *   Denis-Michael Lux
   */
@@ -35,17 +37,6 @@ enum HttpMethodError {
   */
 object HttpMethod {
 
-  /** All special characters allowed in the http method
-    */
-  private val specialCharacters: Set[Char] = "!#$%&'*+-.^_`|~".toSet
-
-  /** Tests whether a character satisfies the `tchar` rule from RFC 9110, section 5.6.2. */
-  private def isTokenCharacter(char: Char): Boolean =
-    (char >= 'a' && char <= 'z') ||
-      (char >= 'A' && char <= 'Z') ||
-      (char >= '0' && char <= '9') ||
-      specialCharacters.contains(char)
-
   /** Creates a method from a non-empty sequence of HTTP token characters.
     *
     * Accepts ASCII letters, digits, and the punctuation allowed by the `tchar` rule. Preserves case
@@ -58,8 +49,7 @@ object HttpMethod {
     *   a `Right` containing the validated method, or a `Left` containing
     *   [[HttpMethodError.InvalidMethodSyntax]] if the name is empty or contains invalid characters
     */
-  def fromString(value: String): Either[HttpMethodError, HttpMethod] = {
-    if value.nonEmpty && value.forall(isTokenCharacter) then Right(HttpMethod(value))
-    else Left(HttpMethodError.InvalidMethodSyntax)
-  }
+  def fromString(value: String): Either[HttpMethodError, HttpMethod] =
+    if value.nonEmpty && value.forall(isTChar) then Right(HttpMethod(value))
+    else Left(InvalidMethodSyntax)
 }

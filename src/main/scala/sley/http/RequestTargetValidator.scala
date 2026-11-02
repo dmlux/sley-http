@@ -1,8 +1,8 @@
 package sley.http
 
 import sley.http.RequestTargetError
-
-import scala.annotation.tailrec
+import sley.http.RequestTargetError.MalformedRequestTarget
+import sley.http.UriSyntax.{isEncodedSequenceOf, isPChar}
 
 /** Syntactic validation rules for the components of a request target.
   *
@@ -14,89 +14,21 @@ import scala.annotation.tailrec
   */
 private[http] object RequestTargetValidator {
 
-  /** Punctuation permitted unencoded in a path.
+  /** Tests the characters of a path against `1*( "/" segment )` with `segment = *pchar`.
     *
-    * Contains the punctuation of the `unreserved` and `sub-delims` rules, `:` and `@` from the
-    * `pchar` rule of RFC 3986, section 3.3, and the segment separator `/`.
+    * The rule is the `absolute-path` rule from RFC 9110, section 4.1, built on RFC 3986, section
+    * 3.3. This validator checks only the permitted characters. That the path starts with `/` is
+    * checked by [[validatePathStartWithSlash]].
     */
-  private val allowedPathCharacters: Set[Char] = "-._~!$&'()*+,;=:@/".toSet
+  private val isValidPath = isEncodedSequenceOf(char => char == '/' || isPChar(char))
 
-  /** Tests whether a character is permitted unencoded in a path.
-    *
-    * Percent-encodings are validated separately.
-    *
-    * @param char
-    *   the character to test
-    * @return
-    *   `true` if the character is permitted, otherwise `false`
-    */
-  private def isValidPathCharacter(char: Char): Boolean = char match
-    case c if '0' <= c && c <= '9'              => true
-    case c if 'a' <= c && c <= 'z'              => true
-    case c if 'A' <= c && c <= 'Z'              => true
-    case c if allowedPathCharacters.contains(c) => true
-    case _                                      => false
-
-  /** Tests whether a character is an ASCII hexadecimal digit.
-    *
-    * @param char
-    *   the character to test
-    * @return
-    *   `true` if the character is a hexadecimal digit, otherwise `false`
-    */
-  private def isValidHex(char: Char): Boolean = char match
-    case c if '0' <= c && c <= '9' => true
-    case c if 'a' <= c && c <= 'f' => true
-    case c if 'A' <= c && c <= 'F' => true
-    case _                         => false
-
-  /** Validates every character of a request-target component.
-    *
-    * Each character must either satisfy `isValidCharacter` or belong to a percent-encoding, which
-    * is a `%` followed by exactly two hexadecimal digits. A small state machine walks the component
-    * once from left to right.
-    *
-    * @param rawComponentString
-    *   the raw path or query
-    * @param isValidCharacter
-    *   the predicate for characters permitted unencoded in this component
-    * @return
-    *   `Right(())` if the component is valid, or a `Left` containing
-    *   [[RequestTargetError.MalformedRequestTarget]] otherwise
-    */
-  private def validateCharacters(
-      rawComponentString: String,
-      isValidCharacter: Char => Boolean
-  ): Either[RequestTargetError, Unit] = {
-    enum State {
-      case Normal, FirstHexDigit, SecondHexDigit
-    }
-
-    val error = RequestTargetError.MalformedRequestTarget(
-      "Request target contains illegal characters."
-    )
-
-    @tailrec
-    def checkCharacter(index: Int, state: State): Either[RequestTargetError, Unit] = {
-      if index >= rawComponentString.length && state == State.Normal then Right(())
-      else if index >= rawComponentString.length then Left(error)
-      else
-        (rawComponentString.charAt(index), state) match
-          case ('%', State.Normal) =>
-            checkCharacter(index + 1, State.FirstHexDigit)
-          case (char, State.Normal) if isValidCharacter(char) =>
-            checkCharacter(index + 1, State.Normal)
-          case (char, State.FirstHexDigit) if isValidHex(char) =>
-            checkCharacter(index + 1, State.SecondHexDigit)
-          case (char, State.SecondHexDigit) if isValidHex(char) =>
-            checkCharacter(index + 1, State.Normal)
-          case (_, _) => Left(error)
-    }
-
-    checkCharacter(0, State.Normal)
-  }
+  /** Tests a query against `query = *( pchar / "/" / "?" )` from RFC 3986, section 3.4. */
+  private val isValidQuery =
+    isEncodedSequenceOf(char => char == '/' || char == '?' || isPChar(char))
 
   /** Validates the characters and percent-encodings of a path.
+    *
+    * A path permits `pchar`, percent-encodings, and the segment separator `/`.
     *
     * @param rawOriginPath
     *   the raw path of an origin-form target
@@ -107,7 +39,8 @@ private[http] object RequestTargetValidator {
   def validatePathCharacters(
       rawOriginPath: String
   ): Either[RequestTargetError, Unit] =
-    validateCharacters(rawOriginPath, isValidPathCharacter)
+    if isValidPath(rawOriginPath) then Right(())
+    else Left(MalformedRequestTarget("Request target contains illegal characters."))
 
   /** Validates the characters and percent-encodings of a query.
     *
@@ -122,7 +55,8 @@ private[http] object RequestTargetValidator {
   def validateQueryCharacters(
       rawQuery: String
   ): Either[RequestTargetError, Unit] =
-    validateCharacters(rawQuery, char => char == '?' || isValidPathCharacter(char))
+    if isValidQuery(rawQuery) then Right(())
+    else Left(MalformedRequestTarget("Request target contains illegal characters."))
 
   /** Validates that a request target is not empty.
     *
@@ -136,7 +70,7 @@ private[http] object RequestTargetValidator {
       rawRequestTarget: String
   ): Either[RequestTargetError, Unit] =
     if rawRequestTarget.nonEmpty then Right(())
-    else Left(RequestTargetError.MalformedRequestTarget("Request target is empty."))
+    else Left(MalformedRequestTarget("Request target is empty."))
 
   /** Validates that a path starts with `/`.
     *
@@ -150,5 +84,5 @@ private[http] object RequestTargetValidator {
       rawOriginPath: String
   ): Either[RequestTargetError, Unit] =
     if rawOriginPath.startsWith("/") then Right(())
-    else Left(RequestTargetError.MalformedRequestTarget("Request target must start with '/'."))
+    else Left(MalformedRequestTarget("Request target must start with '/'."))
 }
