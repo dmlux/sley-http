@@ -1,6 +1,7 @@
-package sley.http
+package sley.http.syntax
 
-import sley.http.CoreRules.isHexDigit
+import sley.http.syntax.CoreRules
+import sley.http.syntax.CoreRules.isHexDigit
 
 import scala.annotation.tailrec
 import scala.collection.immutable.HashSet

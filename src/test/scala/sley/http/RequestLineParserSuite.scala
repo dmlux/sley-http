@@ -1,6 +1,6 @@
 package sley.http
 
-import sley.http.{HttpMethodError, OriginForm, RequestLineError}
+import sley.http.{RequestMethodError, OriginForm, RequestLineError}
 
 class RequestLineParserSuite extends munit.FunSuite {
   test("parse(\"GET /hello HTTP/1.1\")") {
@@ -9,7 +9,7 @@ class RequestLineParserSuite extends munit.FunSuite {
         assertEquals(line.method.value, "GET")
         assertEquals(line.version, "HTTP/1.1")
 
-        line.requestTarget match
+        line.target match
           case origin: OriginForm =>
             assertEquals(origin.path, "/hello")
             assertEquals(origin.query, None)
@@ -25,7 +25,7 @@ class RequestLineParserSuite extends munit.FunSuite {
         assertEquals(line.method.value, "CUSTOM")
         assertEquals(line.version, "HTTP/1.1")
 
-        line.requestTarget match
+        line.target match
           case origin: OriginForm =>
             assertEquals(origin.path, "/hello")
             assertEquals(origin.query, None)
@@ -83,7 +83,7 @@ class RequestLineParserSuite extends munit.FunSuite {
     val result = RequestLine.fromString("G@T /hello HTTP/1.1")
     assertEquals(
       result,
-      Left(RequestLineError.InvalidMethod(HttpMethodError.InvalidMethodSyntax))
+      Left(RequestLineError.InvalidRequestMethod(RequestMethodError.InvalidMethodCharacters))
     )
   }
 

@@ -137,7 +137,7 @@ if it is a valid HTTP token.
 The request line is modeled with small validated
 domain types:
 
-- `HttpMethod`: a value object for a case-sensitive
+- `RequestMethod`: a value object for a case-sensitive
   HTTP token.
 - `RequestTarget`: a sealed hierarchy of request-target
   forms. Only `OriginForm` is implemented. Other forms

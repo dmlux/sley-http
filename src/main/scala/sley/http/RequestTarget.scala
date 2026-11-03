@@ -1,10 +1,36 @@
 package sley.http
 
-import sley.http.RequestTargetValidator.{
-  validatePathCharacters,
-  validatePathStartWithSlash,
-  validateQueryCharacters,
-  validateTargetNotEmpty
+import sley.http.syntax.CoreRules.isDigit
+import sley.http.RequestTargetError.{
+  AsteriskFormNotAllowed,
+  MalformedAuthorityForm,
+  MalformedOriginForm
+}
+import sley.http.RequestTargetValidationError.{
+  EmptyHost,
+  EmptyPort,
+  EmptyTarget,
+  InvalidPathCharacters,
+  InvalidPortCharacters,
+  InvalidQueryCharacters,
+  InvalidUriHostCharacters,
+  MissingColon,
+  MissingLeadingSlash,
+  PortOutOfRange
+}
+import sley.http.RequestTargetValidator.*
+import sley.http.syntax.UriSyntax.{isEncodedSequenceOf, isPChar, isSubDelimiters, isUnreserved}
+
+/** Syntax errors detected while creating a [[RequestTarget]].
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+enum RequestTargetError {
+  case MalformedOriginForm(cause: RequestTargetValidationError)
+  case MalformedAbsoluteForm(cause: RequestTargetValidationError)
+  case MalformedAuthorityForm(cause: RequestTargetValidationError)
+  case AsteriskFormNotAllowed
 }
 
 /** A syntactically valid request target as defined in RFC 9112, section 3.2.
@@ -78,33 +104,71 @@ object OriginForm {
     *   the non-null raw request target
     * @return
     *   a `Right` containing the [[OriginForm]], or a `Left` containing
-    *   [[RequestTargetError.MalformedRequestTarget]] if the target is not a valid origin form
+    *   [[RequestTargetError.MalformedOriginForm]] if the target is not a valid origin form
     */
-  def fromString(rawRequestTarget: String): Either[RequestTargetError, OriginForm] =
-    for {
+  def fromString(rawRequestTarget: String): Either[RequestTargetError, OriginForm] = {
+    val validated = for {
       _ <- validateTargetNotEmpty(rawRequestTarget)
       (rawPath, rawQuery) = separateIntoPathAndQuery(rawRequestTarget)
-
       _ <- validatePathStartWithSlash(rawPath)
       _ <- validatePathCharacters(rawPath)
-
-      _ <- rawQuery.fold[Either[RequestTargetError, Unit]](Right(()))(
+      _ <- rawQuery.fold[Either[RequestTargetValidationError, Unit]](Right(()))(
         validateQueryCharacters
       )
     } yield OriginForm(rawPath, rawQuery)
+
+    validated.left.map(MalformedOriginForm.apply)
+  }
 }
 
-/** Syntax errors detected while creating a [[RequestTarget]].
+final case class AuthorityForm private (
+    host: String,
+    port: Int
+) extends RequestTarget
+
+object AuthorityForm {
+  private def splitIntoUriHostAndPort(
+      rawRequestTarget: String
+  ): Either[RequestTargetValidationError, (String, String)] = {
+    val splitIndex = rawRequestTarget.lastIndexOf(':')
+
+    if splitIndex == -1 then Left(MissingColon)
+    else
+      val (rawUriHost, rawPort) = rawRequestTarget.splitAt(splitIndex)
+      Right((rawUriHost, rawPort.drop(1)))
+  }
+
+  def fromString(rawRequestTarget: String): Either[RequestTargetError, AuthorityForm] = {
+    val validated = for {
+      _ <- validateTargetNotEmpty(rawRequestTarget)
+      (rawUriHost, rawPort) <- splitIntoUriHostAndPort(rawRequestTarget)
+      _ <- validateUriHost(rawUriHost)
+      _ <- validatePort(rawPort)
+      port <- rawPort.toIntOption.toRight(PortOutOfRange)
+      _ <- validatePortRange(port)
+    } yield AuthorityForm(rawUriHost, port)
+
+    validated.left.map(MalformedAuthorityForm.apply)
+  }
+}
+
+/** The asterisk form of a request target. It contains just `*` as its value.
   *
   * @author
   *   Denis-Michael Lux
   */
-enum RequestTargetError {
+case object AsteriskForm extends RequestTarget {
+  val value: String = "*"
+}
 
-  /** The target is empty, is not in a supported form, or contains a character or percent-encoding
-    * that is not permitted. The message describes the violated rule for diagnostics.
-    */
-  case MalformedRequestTarget(message: String)
+final case class AbsoluteForm private (
+    scheme: String,
+    part: String,
+    query: String
+) extends RequestTarget
+
+object AbsoluteForm {
+  def fromString(requestTarget: String): Either[RequestTargetError, AbsoluteForm] = ???
 }
 
 /** Smart constructor for [[RequestTarget]].
@@ -118,12 +182,129 @@ object RequestTarget {
     *
     * Only the origin form is supported, so this delegates to [[OriginForm.fromString]].
     *
+    * @param method
+    *   the method used to decide which form to parse
     * @param rawRequestTarget
     *   the non-null raw request target
     * @return
     *   a `Right` containing the validated target, or a `Left` containing
-    *   [[RequestTargetError.MalformedRequestTarget]] if the target is not in a supported form
+    *   [[RequestTargetError.MalformedOriginForm]] if the target is not in a supported form
     */
-  def fromString(rawRequestTarget: String): Either[RequestTargetError, RequestTarget] =
-    OriginForm.fromString(rawRequestTarget)
+  def fromString(
+      method: RequestMethod,
+      rawRequestTarget: String
+  ): Either[RequestTargetError, RequestTarget] = method match
+    case RequestMethod("CONNECT") => AuthorityForm.fromString(rawRequestTarget)
+    case RequestMethod("OPTIONS") if rawRequestTarget == "*" => Right(AsteriskForm)
+    case _ if rawRequestTarget == "*"                        => Left(AsteriskFormNotAllowed)
+    case _ if rawRequestTarget.startsWith("/") => OriginForm.fromString(rawRequestTarget)
+    case _                                     => AbsoluteForm.fromString(rawRequestTarget)
+}
+
+/** errors that occur during request target validation
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+enum RequestTargetValidationError {
+  case EmptyTarget
+  case MissingLeadingSlash
+  case InvalidPathCharacters
+  case InvalidQueryCharacters
+  case EmptyHost
+  case InvalidUriHostCharacters
+  case EmptyPort
+  case InvalidPortCharacters
+  case PortOutOfRange
+  case MissingColon
+}
+
+/** Syntactic validation rules for the components of a request target.
+  *
+  * The rules follow RFC 9112, section 3.2, which builds on the URI syntax of RFC 3986, sections 3.3
+  * and 3.4.
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+private[http] object RequestTargetValidator {
+
+  /** Tests the characters of a path against `1*( "/" segment )` with `segment = *pchar`.
+    *
+    * The rule is the `absolute-path` rule from RFC 9110, section 4.1, built on RFC 3986, section
+    * 3.3. This validator checks only the permitted characters. That the path starts with `/` is
+    * checked by [[validatePathStartWithSlash]].
+    */
+  private val isValidPath = isEncodedSequenceOf(c => c == '/' || isPChar(c))
+
+  /** Tests a query against `query = *( pchar / "/" / "?" )` from RFC 3986, section 3.4. */
+  private val isValidQuery = isEncodedSequenceOf(c => c == '/' || c == '?' || isPChar(c))
+
+  private val isRegularName = isEncodedSequenceOf(c => isUnreserved(c) || isSubDelimiters(c))
+
+  /** Validates the characters and percent-encodings of a path.
+    *
+    * A path permits `pchar`, percent-encodings, and the segment separator `/`.
+    *
+    * @param rawPath
+    *   the raw path of a request target
+    * @return
+    *   `Right(())` if the path is valid, or a `Left` containing [[RequestTargetValidationError]]
+    *   otherwise
+    */
+  def validatePathCharacters(rawPath: String): Either[RequestTargetValidationError, Unit] =
+    if isValidPath(rawPath) then Right(())
+    else Left(InvalidPathCharacters)
+
+  /** Validates the characters and percent-encodings of a query.
+    *
+    * A query permits the same characters as a path plus `?`, as defined in RFC 3986, section 3.4.
+    *
+    * @param rawQuery
+    *   the raw query without its leading `?`
+    * @return
+    *   `Right(())` if the query is valid, or a `Left` containing [[RequestTargetValidationError]]
+    *   otherwise
+    */
+  def validateQueryCharacters(rawQuery: String): Either[RequestTargetValidationError, Unit] =
+    if isValidQuery(rawQuery) then Right(())
+    else Left(InvalidQueryCharacters)
+
+  /** Validates that a request target is not empty.
+    *
+    * @param rawRequestTarget
+    *   the raw request target
+    * @return
+    *   `Right(())` if the target is not empty, or a `Left` containing
+    *   [[RequestTargetValidationError]] otherwise
+    */
+  def validateTargetNotEmpty(rawRequestTarget: String): Either[RequestTargetValidationError, Unit] =
+    if rawRequestTarget.nonEmpty then Right(())
+    else Left(EmptyTarget)
+
+  /** Validates that a path starts with `/`.
+    *
+    * @param rawPath
+    *   the raw path of a request target
+    * @return
+    *   `Right(())` if the path starts with `/`, or a `Left` containing
+    *   [[RequestTargetValidationError]] otherwise
+    */
+  def validatePathStartWithSlash(rawPath: String): Either[RequestTargetValidationError, Unit] =
+    if rawPath.startsWith("/") then Right(())
+    else Left(MissingLeadingSlash)
+
+  def validateUriHost(rawUriHost: String): Either[RequestTargetValidationError, Unit] =
+    if rawUriHost.isEmpty then Left(EmptyHost)
+    else if !isRegularName(rawUriHost) then Left(InvalidUriHostCharacters)
+    else Right(())
+
+  def validatePort(rawPort: String): Either[RequestTargetValidationError, Unit] =
+    if rawPort.isEmpty then Left(EmptyPort)
+    else if !rawPort.forall(isDigit) then Left(InvalidPortCharacters)
+    else Right(())
+
+  def validatePortRange(port: Int): Either[RequestTargetValidationError, Unit] =
+    if port < 0 || port > 65535 then Left(PortOutOfRange)
+    else Right(())
 }

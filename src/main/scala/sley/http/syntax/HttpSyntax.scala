@@ -1,6 +1,7 @@
-package sley.http
+package sley.http.syntax
 
-import sley.http.CoreRules.{isAlpha, isDigit}
+import sley.http.syntax.CoreRules
+import sley.http.syntax.CoreRules.{isAlpha, isDigit}
 
 import scala.collection.immutable.HashSet
 

@@ -1,4 +1,4 @@
-package sley.http
+package sley.http.syntax
 
 /** Core rules of the ABNF notation defined in RFC 5234, appendix B.1.
   *

@@ -1,5 +1,13 @@
 package sley.http
 
+import sley.http.RequestTargetError.MalformedOriginForm
+import sley.http.RequestTargetValidationError.{
+  EmptyTarget,
+  InvalidPathCharacters,
+  InvalidQueryCharacters,
+  MissingLeadingSlash
+}
+
 class OriginFormSuite extends munit.FunSuite {
   test("OriginForm parse \"/\"") {
     OriginForm.fromString("/") match {
@@ -114,186 +122,126 @@ class OriginFormSuite extends munit.FunSuite {
   test("OriginForm parse \"\"") {
     assertEquals(
       OriginForm.fromString(""),
-      Left(RequestTargetError.MalformedRequestTarget("Request target is empty."))
+      Left(MalformedOriginForm(EmptyTarget))
     )
   }
 
   test("OriginForm parse \"users\"") {
     assertEquals(
       OriginForm.fromString("users"),
-      Left(RequestTargetError.MalformedRequestTarget("Request target must start with '/'."))
+      Left(MalformedOriginForm(MissingLeadingSlash))
     )
   }
 
   test("OriginForm parse \"?q=x\"") {
     assertEquals(
       OriginForm.fromString("?q=x"),
-      Left(RequestTargetError.MalformedRequestTarget("Request target must start with '/'."))
+      Left(MalformedOriginForm(MissingLeadingSlash))
     )
   }
 
   test("OriginForm parse \"/a%\"") {
     assertEquals(
       OriginForm.fromString("/a%"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/a%2\"") {
     assertEquals(
       OriginForm.fromString("/a%2"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/a%GG\"") {
     assertEquals(
       OriginForm.fromString("/a%GG"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/a%2G\"") {
     assertEquals(
       OriginForm.fromString("/a%2G"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/a%2F#\"") {
     assertEquals(
       OriginForm.fromString("/a%2F#"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=%\"") {
     assertEquals(
       OriginForm.fromString("/search?q=%"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=%GG\"") {
     assertEquals(
       OriginForm.fromString("/search?q=%GG"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/us ers\"") {
     assertEquals(
       OriginForm.fromString("/us ers"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/#\"") {
     assertEquals(
       OriginForm.fromString("/#"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/usärs\"") {
     assertEquals(
       OriginForm.fromString("/usärs"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidPathCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=%2\"") {
     assertEquals(
       OriginForm.fromString("/search?q=%2"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=%2G\"") {
     assertEquals(
       OriginForm.fromString("/search?q=%2G"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=a b\"") {
     assertEquals(
       OriginForm.fromString("/search?q=a b"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=ä\"") {
     assertEquals(
       OriginForm.fromString("/search?q=ä"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
   test("OriginForm parse \"/search?q=#\"") {
     assertEquals(
       OriginForm.fromString("/search?q=#"),
-      Left(
-        RequestTargetError.MalformedRequestTarget(
-          "Request target contains illegal characters."
-        )
-      )
+      Left(MalformedOriginForm(InvalidQueryCharacters))
     )
   }
 
@@ -303,22 +251,14 @@ class OriginFormSuite extends munit.FunSuite {
       test(f"OriginForm rejects control character U+${char.toInt}%04X in path") {
         assertEquals(
           OriginForm.fromString(s"/$char"),
-          Left(
-            RequestTargetError.MalformedRequestTarget(
-              "Request target contains illegal characters."
-            )
-          )
+          Left(MalformedOriginForm(InvalidPathCharacters))
         )
       }
 
       test(f"OriginForm rejects control character U+${char.toInt}%04X in query") {
         assertEquals(
           OriginForm.fromString(s"/users?$char"),
-          Left(
-            RequestTargetError.MalformedRequestTarget(
-              "Request target contains illegal characters."
-            )
-          )
+          Left(MalformedOriginForm(InvalidQueryCharacters))
         )
       }
     })

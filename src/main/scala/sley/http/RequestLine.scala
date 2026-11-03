@@ -1,7 +1,7 @@
 package sley.http
 
-import sley.http.CoreRules.isControl
-import sley.http.RequestLineError.{InvalidMethod, InvalidRequestTarget, MalformedRequestLine}
+import sley.http.syntax.CoreRules.isControl
+import sley.http.RequestLineError.{InvalidRequestMethod, InvalidRequestTarget, MalformedRequestLine}
 
 /** The components of an HTTP/1.1 request line as defined in RFC 9112, section 3.
   *
@@ -14,7 +14,7 @@ import sley.http.RequestLineError.{InvalidMethod, InvalidRequestTarget, Malforme
   *
   * @param method
   *   the syntactically valid, case-sensitive HTTP method
-  * @param requestTarget
+  * @param target
   *   the syntactically valid request target
   * @param version
   *   the raw, unvalidated protocol version, for example `HTTP/1.1`
@@ -22,8 +22,8 @@ import sley.http.RequestLineError.{InvalidMethod, InvalidRequestTarget, Malforme
   *   Denis-Michael Lux
   */
 final case class RequestLine private (
-    method: HttpMethod,
-    requestTarget: RequestTarget,
+    method: RequestMethod,
+    target: RequestTarget,
     version: String
 )
 
@@ -44,7 +44,7 @@ enum RequestLineError {
   case MalformedRequestLine(message: String)
 
   /** The method violates the HTTP token syntax. This case does not indicate server support. */
-  case InvalidMethod(error: HttpMethodError)
+  case InvalidRequestMethod(error: RequestMethodError)
 
   /** The request target violates the syntax of every supported request-target form. */
   case InvalidRequestTarget(error: RequestTargetError)
@@ -100,16 +100,19 @@ object RequestLine {
     * @param rawMethod
     *   the non-null method name, preserving its original spelling
     * @return
-    *   a `Right` containing the validated [[HttpMethod]], or a `Left` containing
-    *   [[RequestLineError.InvalidMethod]] if the method syntax is invalid
+    *   a `Right` containing the validated [[RequestMethod]], or a `Left` containing
+    *   [[RequestLineError.InvalidRequestMethod]] if the method syntax is invalid
     */
-  private def parseHttpMethod(rawMethod: String): Either[RequestLineError, HttpMethod] = HttpMethod
-    .fromString(rawMethod)
-    .left
-    .map(InvalidMethod.apply)
+  private def parseRequestMethod(rawMethod: String): Either[RequestLineError, RequestMethod] =
+    RequestMethod
+      .fromString(rawMethod)
+      .left
+      .map(InvalidRequestMethod.apply)
 
   /** Validates request-target syntax and translates request-target errors into request-line errors.
     *
+    * @param method
+    *   the http method used to choose the actual form
     * @param rawRequestTarget
     *   the non-null request target, preserving its original spelling
     * @return
@@ -117,9 +120,10 @@ object RequestLine {
     *   [[RequestLineError.InvalidRequestTarget]] if the request-target syntax is invalid
     */
   private def parseRequestTarget(
+      method: RequestMethod,
       rawRequestTarget: String
   ): Either[RequestLineError, RequestTarget] = RequestTarget
-    .fromString(rawRequestTarget)
+    .fromString(method, rawRequestTarget)
     .left
     .map(InvalidRequestTarget.apply)
 
@@ -128,7 +132,7 @@ object RequestLine {
     * Applies these checks in order and returns the first error found:
     *   1. The line contains no ASCII control characters.
     *   1. The line consists of three non-empty components separated by single ASCII spaces.
-    *   1. The method is a valid HTTP token, see [[HttpMethod.fromString]].
+    *   1. The method is a valid HTTP token, see [[RequestMethod.fromString]].
     *   1. The request target is in a supported form, see [[RequestTarget.fromString]].
     *
     * The protocol version is not validated yet and is returned unchanged. All components keep their
@@ -139,14 +143,14 @@ object RequestLine {
     * @return
     *   a `Right` containing the [[RequestLine]], or a `Left` containing
     *   [[RequestLineError.MalformedRequestLine]] for control characters or an invalid structure,
-    *   [[RequestLineError.InvalidMethod]] for invalid method syntax, or
+    *   [[RequestLineError.InvalidRequestMethod]] for invalid method syntax, or
     *   [[RequestLineError.InvalidRequestTarget]] for invalid request-target syntax
     */
   def fromString(requestLine: String): Either[RequestLineError, RequestLine] =
     for {
       _ <- validateNoControlCharacter(requestLine)
       (rawMethod, rawRequestTarget, rawVersion) <- splitLine(requestLine)
-      method <- parseHttpMethod(rawMethod)
-      requestTarget <- parseRequestTarget(rawRequestTarget)
+      method <- parseRequestMethod(rawMethod)
+      requestTarget <- parseRequestTarget(method, rawRequestTarget)
     } yield RequestLine(method, requestTarget, rawVersion)
 }
