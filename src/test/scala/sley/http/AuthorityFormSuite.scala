@@ -1,21 +1,17 @@
 package sley.http
 
+import sley.http.HostError.MalformedRegName
+import sley.http.RegNameError.InvalidCharacters
 import sley.http.RequestTargetError.MalformedAuthorityForm
-import sley.http.RequestTargetValidationError.{
-  EmptyHost,
-  EmptyPort,
-  EmptyTarget,
-  InvalidPortCharacters,
-  InvalidUriHostCharacters,
-  MissingColon,
-  PortOutOfRange
-}
+import sley.http.RequestTargetValidationError.*
 
 class AuthorityFormSuite extends munit.FunSuite {
   test("AuthorityForm parse \"example.com:443\"") {
     AuthorityForm.fromString("example.com:443") match {
       case Right(authorityForm) =>
-        assertEquals(authorityForm.host, "example.com")
+        authorityForm.host match
+          case RegName(raw) => assertEquals(raw, "example.com")
+          case other        => fail(s"Expected RegName, got $other")
         assertEquals(authorityForm.port, 443)
 
       case Left(error) =>
@@ -26,7 +22,9 @@ class AuthorityFormSuite extends munit.FunSuite {
   test("AuthorityForm parse \"127.0.0.1:8080\"") {
     AuthorityForm.fromString("127.0.0.1:8080") match {
       case Right(authorityForm) =>
-        assertEquals(authorityForm.host, "127.0.0.1")
+        authorityForm.host match
+          case IPv4Address(raw) => assertEquals(raw, "127.0.0.1")
+          case other            => fail(s"Expected IPv4Address, got $other")
         assertEquals(authorityForm.port, 8080)
 
       case Left(error) =>
@@ -37,7 +35,9 @@ class AuthorityFormSuite extends munit.FunSuite {
   test("AuthorityForm parse \"ex%41mple.com:443\"") {
     AuthorityForm.fromString("ex%41mple.com:443") match {
       case Right(authorityForm) =>
-        assertEquals(authorityForm.host, "ex%41mple.com")
+        authorityForm.host match
+          case RegName(raw) => assertEquals(raw, "ex%41mple.com")
+          case other        => fail(s"Expected RegName, got $other")
         assertEquals(authorityForm.port, 443)
 
       case Left(error) =>
@@ -62,7 +62,7 @@ class AuthorityFormSuite extends munit.FunSuite {
   test("AuthorityForm parse \":443\"") {
     assertEquals(
       AuthorityForm.fromString(":443"),
-      Left(MalformedAuthorityForm(EmptyHost))
+      Left(MalformedAuthorityForm(InvalidHost(HostError.Empty)))
     )
   }
 
@@ -90,7 +90,7 @@ class AuthorityFormSuite extends munit.FunSuite {
   test("AuthorityForm parse \"user@example.com:443\"") {
     assertEquals(
       AuthorityForm.fromString("user@example.com:443"),
-      Left(MalformedAuthorityForm(InvalidUriHostCharacters))
+      Left(MalformedAuthorityForm(InvalidHost(MalformedRegName(InvalidCharacters))))
     )
   }
 

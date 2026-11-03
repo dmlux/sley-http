@@ -113,11 +113,4 @@ class HostSuite extends munit.FunSuite {
       Left(Invalid)
     )
   }
-
-  test("Parse \"[::1]\"") {
-    assertEquals(
-      Host.fromString("[::1]"),
-      Left(Invalid)
-    )
-  }
 }

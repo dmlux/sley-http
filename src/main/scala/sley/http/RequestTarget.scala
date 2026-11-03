@@ -1,25 +1,14 @@
 package sley.http
 
-import sley.http.syntax.CoreRules.isDigit
 import sley.http.RequestTargetError.{
   AsteriskFormNotAllowed,
   MalformedAuthorityForm,
   MalformedOriginForm
 }
-import sley.http.RequestTargetValidationError.{
-  EmptyHost,
-  EmptyPort,
-  EmptyTarget,
-  InvalidPathCharacters,
-  InvalidPortCharacters,
-  InvalidQueryCharacters,
-  InvalidUriHostCharacters,
-  MissingColon,
-  MissingLeadingSlash,
-  PortOutOfRange
-}
+import sley.http.RequestTargetValidationError.*
 import sley.http.RequestTargetValidator.*
-import sley.http.syntax.UriSyntax.{isEncodedSequenceOf, isPChar, isSubDelimiters, isUnreserved}
+import sley.http.syntax.CoreRules.isDigit
+import sley.http.syntax.UriSyntax.{isEncodedSequenceOf, isPChar}
 
 /** Syntax errors detected while creating a [[RequestTarget]].
   *
@@ -141,19 +130,19 @@ object OriginForm {
   * `CONNECT` and names the destination of a tunnel.
   *
   * Every instance satisfies these invariants:
-  *   - `host` is a non-empty registered name as defined by the `reg-name` rule of RFC 3986.
+  *   - `host` is an [[IPv4Address]] or a non-empty [[RegName]] that satisfies the `reg-name` rule
+  *     of RFC 3986.
   *   - `port` is a number from 0 through 65535.
   *
-  * IP literals in square brackets are not supported yet and are rejected. IPv4 addresses are
-  * accepted because every IPv4 address is also a registered name. The ABNF permits an empty host
-  * and an empty port. RFC 9110, section 9.3.6, requires rejecting an empty port. An empty host is
-  * rejected as well, because a tunnel needs a destination.
+  * IP literals in square brackets are not supported yet and are rejected. The ABNF permits an empty
+  * host and an empty port. RFC 9110, section 9.3.6, requires rejecting an empty port. An empty host
+  * is rejected as well, because a tunnel needs a destination.
   *
   * Instances can only be created through [[AuthorityForm.fromString]]. The host keeps its original
   * spelling. The port is stored as a number, so leading zeros are not preserved.
   *
   * @param host
-  *   the registered name of the tunnel destination, with percent-encodings not decoded
+  *   the host of the tunnel destination in its original spelling
   * @param port
   *   the port number of the tunnel destination
   *
@@ -161,7 +150,7 @@ object OriginForm {
   *   Denis-Michael Lux
   */
 final case class AuthorityForm private (
-    host: String,
+    host: Host,
     port: Int
 ) extends RequestTarget
 
@@ -210,11 +199,11 @@ object AuthorityForm {
     val validated = for {
       _ <- validateTargetNotEmpty(rawRequestTarget)
       (rawUriHost, rawPort) <- splitIntoUriHostAndPort(rawRequestTarget)
-      _ <- validateUriHost(rawUriHost)
       _ <- validatePort(rawPort)
       port <- rawPort.toIntOption.toRight(PortOutOfRange)
       _ <- validatePortRange(port)
-    } yield AuthorityForm(rawUriHost, port)
+      host <- validateHost(rawUriHost)
+    } yield AuthorityForm(host, port)
 
     validated.left.map(MalformedAuthorityForm.apply)
   }
@@ -332,12 +321,6 @@ private enum RequestTargetValidationError {
   /** The query contains a character or percent-encoding that is not permitted. */
   case InvalidQueryCharacters
 
-  /** The host is empty. */
-  case EmptyHost
-
-  /** The host contains a character or percent-encoding that a registered name does not permit. */
-  case InvalidUriHostCharacters
-
   /** The port is empty. RFC 9110, section 9.3.6, requires rejecting an empty port for `CONNECT`. */
   case EmptyPort
 
@@ -349,6 +332,9 @@ private enum RequestTargetValidationError {
 
   /** The authority contains no `:` between host and port. */
   case MissingColon
+
+  /** The host violates the host syntax. `cause` names the violated rule. */
+  case InvalidHost(cause: HostError)
 }
 
 /** Syntactic validation rules for the components of a request target.
@@ -371,11 +357,6 @@ private object RequestTargetValidator {
 
   /** Tests a query against `query = *( pchar / "/" / "?" )` from RFC 3986, section 3.4. */
   private val isValidQuery = isEncodedSequenceOf(c => c == '/' || c == '?' || isPChar(c))
-
-  /** Tests a host against `reg-name = *( unreserved / pct-encoded / sub-delims )` from RFC 3986,
-    * section 3.2.2.
-    */
-  private val isRegularName = isEncodedSequenceOf(c => isUnreserved(c) || isSubDelimiters(c))
 
   /** Validates the characters and percent-encodings of a path.
     *
@@ -429,22 +410,6 @@ private object RequestTargetValidator {
     if rawPath.startsWith("/") then Right(())
     else Left(MissingLeadingSlash)
 
-  /** Validates that a host is a non-empty registered name.
-    *
-    * IPv4 addresses pass, because every IPv4 address is also a registered name. IP literals fail,
-    * because a registered name does not permit `[` and `]`.
-    *
-    * @param rawUriHost
-    *   the raw host of a request target
-    * @return
-    *   `Right(())` if the host is valid, or a `Left` containing [[RequestTargetValidationError]]
-    *   otherwise
-    */
-  def validateUriHost(rawUriHost: String): Either[RequestTargetValidationError, Unit] =
-    if rawUriHost.isEmpty then Left(EmptyHost)
-    else if !isRegularName(rawUriHost) then Left(InvalidUriHostCharacters)
-    else Right(())
-
   /** Validates that a port is not empty and consists only of ASCII digits.
     *
     * RFC 3986 permits an empty port, but RFC 9110, section 9.3.6, requires rejecting it for
@@ -472,4 +437,15 @@ private object RequestTargetValidator {
   def validatePortRange(port: Int): Either[RequestTargetValidationError, Unit] =
     if port < 0 || port > 65535 then Left(PortOutOfRange)
     else Right(())
+
+  /** Classifies a host as defined by [[Host.fromString]].
+    *
+    * @param rawHost
+    *   the raw host of a request target
+    * @return
+    *   a `Right` containing the classified [[Host]], or a `Left` containing
+    *   [[RequestTargetValidationError.InvalidHost]] otherwise
+    */
+  def validateHost(rawHost: String): Either[RequestTargetValidationError, Host] =
+    Host.fromString(rawHost).left.map(InvalidHost.apply)
 }

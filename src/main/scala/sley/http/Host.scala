@@ -2,24 +2,9 @@ package sley.http
 
 import sley.http.HostError.*
 import sley.http.syntax.IpSyntax.isDecOctet
+import sley.http.syntax.UriSyntax.{isEncodedSequenceOf, isSubDelimiters, isUnreserved}
 
 import scala.annotation.tailrec
-
-/** Syntax errors detected while creating a [[Host]] or one of its forms.
-  *
-  * @author
-  *   Denis-Michael Lux
-  */
-enum HostError {
-
-  /** The host is empty. */
-  case Empty
-
-  /** An IPv4 address violates the `IPv4address` rule. `cause` names the violated rule. */
-  case MalformedIPv4Address(cause: IPv4AddressError)
-
-  case Invalid
-}
 
 /** A syntactically valid host as defined in RFC 3986, section 3.2.2.
   *
@@ -36,10 +21,37 @@ enum HostError {
   */
 sealed trait Host
 
+/** Syntax errors detected while creating a [[Host]] or one of its forms.
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+enum HostError {
+
+  /** The host is empty. */
+  case Empty
+
+  case UnterminatedIpLiteral
+
+  /** An IPv4 address violates the `IPv4address` rule. `cause` names the violated rule. */
+  case MalformedIPv4Address(cause: IPv4AddressError)
+
+  case MalformedIPv6Address(cause: IPv6AddressError)
+
+  case MalformedIPvFutureAddress(cause: IPvFutureError)
+
+  /** The host is not an IPv4 address and violates the `reg-name` rule. `cause` names the violated
+    * rule.
+    */
+  case MalformedRegName(cause: RegNameError)
+
+  case Invalid
+}
+
 /** A registered name, usually a DNS name, as defined in RFC 3986, section 3.2.2.
   *
-  * The rule is `reg-name = *( unreserved / pct-encoded / sub-delims )`. There is no smart
-  * constructor yet, so instances cannot be created.
+  * The rule is `reg-name = *( unreserved / pct-encoded / sub-delims )`. Instances are created
+  * through [[RegName.fromString]].
   *
   * @param raw
   *   the registered name in its original spelling, with percent-encodings not decoded
@@ -48,6 +60,45 @@ sealed trait Host
   *   Denis-Michael Lux
   */
 final case class RegName private (raw: String) extends Host
+
+/** Syntax errors detected while creating a [[RegName]].
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+enum RegNameError {
+
+  /** The name is empty. */
+  case Empty
+
+  /** The name contains a character or percent-encoding that `reg-name` does not permit. */
+  case InvalidCharacters
+}
+
+/** Smart constructor for [[RegName]].
+  *
+  * @author
+  *   Denis-Michael Lux
+  */
+object RegName {
+
+  /** Creates a [[RegName]] from a raw host.
+    *
+    * The ABNF permits an empty `reg-name`, but an empty name is rejected because a host needs a
+    * destination. The name keeps its original spelling.
+    *
+    * @param rawHost
+    *   the non-null raw host
+    * @return
+    *   a `Right` containing the registered name, or a `Left` containing [[RegNameError.Empty]] or
+    *   [[RegNameError.InvalidCharacters]]
+    */
+  def fromString(rawHost: String): Either[RegNameError, RegName] =
+    if rawHost.isEmpty then Left(RegNameError.Empty)
+    else if !isEncodedSequenceOf(c => isUnreserved(c) || isSubDelimiters(c))(rawHost) then
+      Left(RegNameError.InvalidCharacters)
+    else Right(RegName(rawHost))
+}
 
 /** An IPv4 address as defined by the `IPv4address` rule of RFC 3986, section 3.2.2.
   *
@@ -184,6 +235,27 @@ object IPv4Address {
   */
 final case class IPv6Address private (raw: String) extends Host
 
+enum IPv6AddressError {
+  case Empty
+  case EmptyGroup
+  case TooFewGroups
+  case TooManyGroups
+  case DoublePlaceholder
+  case TooLongGroup
+  case InvalidGroup
+  case InvalidIPv4Group(cause: IPv4AddressError)
+}
+
+object IPv6Address {
+  private def validateEmpty(rawHost: String): Either[IPv6AddressError, Unit] =
+    if rawHost.isEmpty then Left(IPv6AddressError.Empty)
+    else Right(())
+
+  def fromString(rawHost: String): Either[IPv6AddressError, IPv6Address] = for {
+    _ <- validateEmpty(rawHost)
+  } yield IPv6Address(rawHost)
+}
+
 /** An IP literal in a future address format, as defined in RFC 3986, section 3.2.2.
   *
   * The rule is `IPvFuture = "v" 1*HEXDIG "." 1*( unreserved / sub-delims / ":" )`. The leading `v`
@@ -197,6 +269,14 @@ final case class IPv6Address private (raw: String) extends Host
   */
 final case class IPvFuture private (raw: String) extends Host
 
+enum IPvFutureError {
+  case Invalid
+}
+
+object IPvFuture {
+  def fromString(rawHost: String): Either[IPvFutureError, IPvFuture] = ???
+}
+
 /** Smart constructor for [[Host]].
   *
   * @author
@@ -204,24 +284,13 @@ final case class IPvFuture private (raw: String) extends Host
   */
 object Host {
 
-  /** Validates that a host is not empty.
-    *
-    * @param rawHost
-    *   the non-null raw host
-    * @return
-    *   `Right(())` if the host is not empty, or a `Left` containing [[HostError.Empty]] otherwise
-    */
-  def validateEmpty(rawHost: String): Either[HostError, Unit] =
-    if rawHost.isEmpty then Left(Empty)
-    else Right(())
-
   /** Creates a [[Host]] from its raw representation.
     *
-    * The intended classification follows RFC 3986: a host in square brackets is an IP literal, a
-    * host that matches `IPv4address` is an IPv4 address, and every other valid host is a registered
-    * name.
+    * Follows RFC 3986, section 3.2.2: a host that matches `IPv4address` is an [[IPv4Address]], and
+    * every other host is a [[RegName]]. A host that fails the IPv4 check is therefore not an error.
     *
-    * Not implemented yet. Calling this method throws a `NotImplementedError`.
+    * IP literals in square brackets are not recognized yet. They fail as a [[RegName]], because
+    * `reg-name` does not permit `[` and `]`.
     *
     * @param rawHost
     *   the non-null raw host
@@ -229,5 +298,31 @@ object Host {
     *   a `Right` containing the classified host, or a `Left` containing the [[HostError]] of the
     *   first violated rule
     */
-  def fromString(rawHost: String): Either[HostError, Host] = ???
+  def fromString(rawHost: String): Either[HostError, Host] = {
+    rawHost match {
+      case host if host.isEmpty => Left(Empty)
+
+      case host if host.startsWith("[") && !host.endsWith("]") => Left(UnterminatedIpLiteral)
+
+      case host if host.startsWith("[v") || host.startsWith("[V") =>
+        IPvFuture
+          .fromString(host.substring(1, host.length - 1))
+          .left
+          .map(MalformedIPvFutureAddress.apply)
+
+      case host if host.startsWith("[") =>
+        IPv6Address
+          .fromString(host.substring(1, host.length - 1))
+          .left
+          .map(MalformedIPv6Address.apply)
+
+      case host =>
+        IPv4Address
+          .fromString(host)
+          .fold(
+            _ => RegName.fromString(host).left.map(MalformedRegName.apply),
+            address => Right(address)
+          )
+    }
+  }
 }
