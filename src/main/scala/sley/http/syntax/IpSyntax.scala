@@ -1,6 +1,6 @@
 package sley.http.syntax
 
-import sley.http.syntax.CoreRules.isDigit
+import sley.http.syntax.CoreRules.{isDigit, isHexDigit}
 
 /** Rules for IP addresses defined in RFC 3986, section 3.2.2.
   *
@@ -37,4 +37,17 @@ private[http] object IpSyntax {
       case 2 => sequence.head != '0' && sequence.forall(isDigit)
       case 3 => sequence.head != '0' && sequence.forall(isDigit) && sequence.toInt <= 255
       case _ => false
+
+  /** Tests the `h16` rule, `h16 = 1*4HEXDIG`, which matches one group of an IPv6 address.
+    *
+    * A group encodes 16 bits as one to four hexadecimal digits. Leading zeros are permitted.
+    *
+    * @param sequence
+    *   the characters of the group
+    * @return
+    *   `true` if the group has one to four hexadecimal digits, otherwise `false`
+    */
+  def isH16(sequence: List[Char]): Boolean = sequence.nonEmpty
+    && sequence.length <= 4
+    && sequence.forall(isHexDigit)
 }

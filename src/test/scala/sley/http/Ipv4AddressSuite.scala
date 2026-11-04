@@ -2,7 +2,7 @@ package sley.http
 
 import sley.http.IPv4AddressError.{InvalidOctet, TooFewOctets, TooManyOctets}
 
-class IPv4AddressSuite extends munit.FunSuite {
+class Ipv4AddressSuite extends munit.FunSuite {
   test("parse \"192.168.1.1\"") {
     IPv4Address.fromString("192.168.1.1") match {
       case Right(IPv4Address(value)) => assertEquals(value, "192.168.1.1")

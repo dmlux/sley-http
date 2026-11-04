@@ -11,7 +11,7 @@ import sley.http.IPv6AddressError.{
   TooManyGroups
 }
 
-class IPv6AddressSuite extends munit.FunSuite {
+class Ipv6AddressSuite extends munit.FunSuite {
 
   test("Parse \"1:2:3:4:5:6:7:8\"") {
     IPv6Address.fromString("1:2:3:4:5:6:7:8") match {
@@ -163,6 +163,30 @@ class IPv6AddressSuite extends munit.FunSuite {
     }
   }
 
+  test("Parse \"1:2:3:4:5:6:7:8\"") {
+    IPv6Address.fromString("1:2:3:4:5:6:7:8") match {
+      case Right(IPv6Address(value)) =>
+        assertEquals(value, "1:2:3:4:5:6:7:8")
+      case Left(error) => fail(s"Expected IPv6 address, got $error")
+    }
+  }
+
+  test("Parse \"2001:db8::192.0.2.1\"") {
+    IPv6Address.fromString("2001:db8::192.0.2.1") match {
+      case Right(IPv6Address(value)) =>
+        assertEquals(value, "2001:db8::192.0.2.1")
+      case Left(error) => fail(s"Expected IPv6 address, got $error")
+    }
+  }
+
+  test("Parse \"1:2:3:4:5:6:192.0.2.1\"") {
+    IPv6Address.fromString("1:2:3:4:5:6:192.0.2.1") match {
+      case Right(IPv6Address(value)) =>
+        assertEquals(value, "1:2:3:4:5:6:192.0.2.1")
+      case Left(error) => fail(s"Expected IPv6 address, got $error")
+    }
+  }
+
   test("Parse \"\"") {
     assertEquals(
       IPv6Address.fromString(""),
@@ -299,14 +323,14 @@ class IPv6AddressSuite extends munit.FunSuite {
   test("Parse \"1.2.3.4::\"") {
     assertEquals(
       IPv6Address.fromString("1.2.3.4::"),
-      Left(InvalidGroup)
+      Left(TooLongGroup)
     )
   }
 
   test("Parse \"::1.2.3.4:1\"") {
     assertEquals(
       IPv6Address.fromString("::1.2.3.4:1"),
-      Left(InvalidGroup)
+      Left(TooLongGroup)
     )
   }
 
@@ -327,14 +351,14 @@ class IPv6AddressSuite extends munit.FunSuite {
   test("Parse \"fe80::1%eth0\"") {
     assertEquals(
       IPv6Address.fromString("fe80::1%eth0"),
-      Left(InvalidGroup)
+      Left(TooLongGroup)
     )
   }
 
   test("Parse \"fe80::1%25eth0\"") {
     assertEquals(
       IPv6Address.fromString("fe80::1%25eth0"),
-      Left(InvalidGroup)
+      Left(TooLongGroup)
     )
   }
 
@@ -349,6 +373,41 @@ class IPv6AddressSuite extends munit.FunSuite {
     assertEquals(
       IPv6Address.fromString(" ::1"),
       Left(InvalidGroup)
+    )
+  }
+
+  test("Parse \"1:2:3:4:5:6:7:8::\"") {
+    assertEquals(
+      IPv6Address.fromString("1:2:3:4:5:6:7:8::"),
+      Left(TooManyGroups)
+    )
+  }
+
+  test("Parse \"1::2::3\"") {
+    assertEquals(
+      IPv6Address.fromString("1::2::3"),
+      Left(DoublePlaceholder)
+    )
+  }
+
+  test("Parse \"1:2:3:4:5:6:7:00000\"") {
+    assertEquals(
+      IPv6Address.fromString("1:2:3:4:5:6:7:00000"),
+      Left(TooLongGroup)
+    )
+  }
+
+  test("Parse \"1:2:3:4:5:6:7:192.0.2.1\"") {
+    assertEquals(
+      IPv6Address.fromString("1:2:3:4:5:6:7:192.0.2.1"),
+      Left(TooManyGroups)
+    )
+  }
+
+  test("Reject single colon after compression") {
+    assertEquals(
+      IPv6Address.fromString("1::2:3:"),
+      Left(EmptyGroup)
     )
   }
 }
