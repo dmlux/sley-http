@@ -1,6 +1,6 @@
 package sley.http
 
-import sley.http.RequestMethodError.{Empty, InvalidMethodCharacters}
+import sley.http.RequestMethodError.{Empty, InvalidCharacters}
 import sley.http.syntax.HttpSyntax.isTChar
 
 /** A syntactically valid HTTP method name.
@@ -12,12 +12,12 @@ import sley.http.syntax.HttpSyntax.isTChar
   * Method names are case-sensitive and keep their original spelling. Syntactic validity does not
   * imply that a server recognizes or supports the method.
   *
-  * @param value
+  * @param raw
   *   the validated method name, preserving its original spelling
   * @author
   *   Denis-Michael Lux
   */
-final case class RequestMethod private (value: String)
+final case class RequestMethod private (raw: String)
 
 /** Syntax errors detected while creating a [[RequestMethod]].
   *
@@ -27,7 +27,7 @@ final case class RequestMethod private (value: String)
 enum RequestMethodError {
 
   /** The name contains a character that is not permitted in an HTTP token. */
-  case InvalidMethodCharacters
+  case InvalidCharacters
 
   /** The name is empty. */
   case Empty
@@ -46,15 +46,15 @@ object RequestMethod {
     * and performs no trimming or normalization. Unknown method names are accepted if their syntax
     * is valid. Whether a server supports the method is decided elsewhere.
     *
-    * @param value
+    * @param rawValue
     *   the non-null method name to validate
     * @return
     *   a `Right` containing the validated method, or a `Left` containing
     *   [[RequestMethodError.Empty]] if the name is empty, or
-    *   [[RequestMethodError.InvalidMethodCharacters]] if it contains invalid characters
+    *   [[RequestMethodError.InvalidCharacters]] if it contains invalid characters
     */
-  def fromString(value: String): Either[RequestMethodError, RequestMethod] =
-    if value.isEmpty then Left(Empty)
-    else if !value.forall(isTChar) then Left(InvalidMethodCharacters)
-    else Right(RequestMethod(value))
+  def fromString(rawValue: String): Either[RequestMethodError, RequestMethod] =
+    if rawValue.isEmpty then Left(Empty)
+    else if !rawValue.forall(isTChar) then Left(InvalidCharacters)
+    else Right(RequestMethod(rawValue))
 }

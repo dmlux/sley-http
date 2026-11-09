@@ -1,30 +1,36 @@
 package sley.http
 
 import sley.http.syntax.CoreRules.isControl
-import sley.http.RequestLineError.{InvalidRequestMethod, InvalidRequestTarget, MalformedRequestLine}
+import sley.http.RequestLineError.{
+  InvalidRequestMethod,
+  InvalidRequestTarget,
+  InvalidRequestVersion,
+  MalformedRequestLine
+}
 
 /** The components of an HTTP/1.1 request line as defined in RFC 9112, section 3.
   *
-  * The method and the request target are syntactically validated domain types. The protocol version
-  * is still the raw string from the request line and is not validated yet.
+  * The method, the request target, and the protocol version are syntactically validated domain
+  * types.
   *
-  * Instances can only be created through [[RequestLine.fromString]]. A `RequestLine` does not check
-  * whether its components fit together, for example whether the request-target form is allowed for
-  * the method. An instance therefore does not guarantee a fully valid request line.
+  * Instances can only be created through [[RequestLine.fromString]]. The method selects the
+  * request-target form, so the form always fits the method. For example, `CONNECT` always has an
+  * [[AuthorityForm]], and only `OPTIONS` can have the [[AsteriskForm]]. Whether the server supports
+  * the method, the target, or the version is not checked.
   *
   * @param method
   *   the syntactically valid, case-sensitive HTTP method
   * @param target
   *   the syntactically valid request target
   * @param version
-  *   the raw, unvalidated protocol version, for example `HTTP/1.1`
+  *   the syntactically valid protocol version, for example `HTTP/1.1`
   * @author
   *   Denis-Michael Lux
   */
 final case class RequestLine private (
     method: RequestMethod,
     target: RequestTarget,
-    version: String
+    version: RequestVersion
 )
 
 /** Syntax errors detected while parsing a request line.
@@ -48,6 +54,11 @@ enum RequestLineError {
 
   /** The request target violates the syntax of every supported request-target form. */
   case InvalidRequestTarget(error: RequestTargetError)
+
+  /** The protocol version violates the `HTTP-version` syntax. This case does not indicate server
+    * support.
+    */
+  case InvalidRequestVersion(error: RequestVersionError)
 }
 
 /** Smart constructor for [[RequestLine]].
@@ -112,7 +123,7 @@ object RequestLine {
   /** Validates request-target syntax and translates request-target errors into request-line errors.
     *
     * @param method
-    *   the http method used to choose the actual form
+    *   the HTTP method that selects the request-target form
     * @param rawRequestTarget
     *   the non-null request target, preserving its original spelling
     * @return
@@ -127,16 +138,33 @@ object RequestLine {
     .left
     .map(InvalidRequestTarget.apply)
 
+  /** Validates protocol-version syntax and translates version errors into request-line errors.
+    *
+    * @param rawRequestVersion
+    *   the non-null protocol version, preserving its original spelling
+    * @return
+    *   a `Right` containing the validated [[RequestVersion]], or a `Left` containing
+    *   [[RequestLineError.InvalidRequestVersion]] if the version syntax is invalid
+    */
+  private def parseRequestVersion(
+      rawRequestVersion: String
+  ): Either[RequestLineError, RequestVersion] = RequestVersion
+    .fromString(rawRequestVersion)
+    .left
+    .map(InvalidRequestVersion.apply)
+
   /** Parses a request line into its components.
     *
     * Applies these checks in order and returns the first error found:
     *   1. The line contains no ASCII control characters.
     *   1. The line consists of three non-empty components separated by single ASCII spaces.
     *   1. The method is a valid HTTP token, see [[RequestMethod.fromString]].
-    *   1. The request target is in a supported form, see [[RequestTarget.fromString]].
+    *   1. The request target is valid in the form selected by the method, see
+    *      [[RequestTarget.fromString]].
+    *   1. The protocol version is valid, see [[RequestVersion.fromString]].
     *
-    * The protocol version is not validated yet and is returned unchanged. All components keep their
-    * original spelling. Whether the server supports the method or the version is not checked.
+    * All components keep their original spelling. Whether the server supports the method or the
+    * version is not checked.
     *
     * @param requestLine
     *   a non-null, complete request line with its terminating CRLF already removed
@@ -144,13 +172,15 @@ object RequestLine {
     *   a `Right` containing the [[RequestLine]], or a `Left` containing
     *   [[RequestLineError.MalformedRequestLine]] for control characters or an invalid structure,
     *   [[RequestLineError.InvalidRequestMethod]] for invalid method syntax, or
-    *   [[RequestLineError.InvalidRequestTarget]] for invalid request-target syntax
+    *   [[RequestLineError.InvalidRequestTarget]] for invalid request-target syntax, or
+    *   [[RequestLineError.InvalidRequestVersion]] for invalid version syntax
     */
   def fromString(requestLine: String): Either[RequestLineError, RequestLine] =
     for {
       _ <- validateNoControlCharacter(requestLine)
-      (rawMethod, rawRequestTarget, rawVersion) <- splitLine(requestLine)
-      method <- parseRequestMethod(rawMethod)
-      requestTarget <- parseRequestTarget(method, rawRequestTarget)
-    } yield RequestLine(method, requestTarget, rawVersion)
+      (rawRequestMethod, rawRequestTarget, rawVersion) <- splitLine(requestLine)
+      requestMethod <- parseRequestMethod(rawRequestMethod)
+      requestTarget <- parseRequestTarget(requestMethod, rawRequestTarget)
+      requestVersion <- parseRequestVersion(rawVersion)
+    } yield RequestLine(requestMethod, requestTarget, requestVersion)
 }

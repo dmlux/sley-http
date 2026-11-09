@@ -6,8 +6,9 @@ class RequestLineParserSuite extends munit.FunSuite {
   test("parse(\"GET /hello HTTP/1.1\")") {
     RequestLine.fromString("GET /hello HTTP/1.1") match {
       case Right(line) =>
-        assertEquals(line.method.value, "GET")
-        assertEquals(line.version, "HTTP/1.1")
+        assertEquals(line.method.raw, "GET")
+        assertEquals(line.version.rawName, "HTTP")
+        assertEquals(line.version.rawVersion, "1.1")
 
         line.target match
           case origin: OriginForm =>
@@ -22,8 +23,9 @@ class RequestLineParserSuite extends munit.FunSuite {
   test("parse(\"CUSTOM /hello HTTP/1.1\")") {
     RequestLine.fromString("CUSTOM /hello HTTP/1.1") match {
       case Right(line) =>
-        assertEquals(line.method.value, "CUSTOM")
-        assertEquals(line.version, "HTTP/1.1")
+        assertEquals(line.method.raw, "CUSTOM")
+        assertEquals(line.version.rawName, "HTTP")
+        assertEquals(line.version.rawVersion, "1.1")
 
         line.target match
           case origin: OriginForm =>
@@ -83,7 +85,7 @@ class RequestLineParserSuite extends munit.FunSuite {
     val result = RequestLine.fromString("G@T /hello HTTP/1.1")
     assertEquals(
       result,
-      Left(RequestLineError.InvalidRequestMethod(RequestMethodError.InvalidMethodCharacters))
+      Left(RequestLineError.InvalidRequestMethod(RequestMethodError.InvalidCharacters))
     )
   }
 

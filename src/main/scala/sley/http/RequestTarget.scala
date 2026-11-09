@@ -2,6 +2,7 @@ package sley.http
 
 import sley.http.RequestTargetError.{
   AsteriskFormNotAllowed,
+  MalformedAbsoluteForm,
   MalformedAuthorityForm,
   MalformedOriginForm
 }
@@ -39,8 +40,7 @@ enum RequestTargetError {
   * RFC 9112 defines four request-target forms: origin form, absolute form, authority form, and
   * asterisk form. [[RequestTarget.fromString]] selects the form based on the method and the target.
   *
-  * The origin form, the authority form, and the asterisk form are implemented. The absolute form is
-  * not implemented yet.
+  * All four request-target forms are implemented.
   *
   * @author
   *   Denis-Michael Lux
@@ -130,13 +130,11 @@ object OriginForm {
   * `CONNECT` and names the destination of a tunnel.
   *
   * Every instance satisfies these invariants:
-  *   - `host` is an [[IPv4Address]] or a non-empty [[RegName]] that satisfies the `reg-name` rule
-  *     of RFC 3986.
+  *   - `host` is a [[Host]] as classified by [[Host.fromString]]. It is never empty.
   *   - `port` is a number from 0 through 65535.
   *
-  * IP literals in square brackets are not supported yet and are rejected. The ABNF permits an empty
-  * host and an empty port. RFC 9110, section 9.3.6, requires rejecting an empty port. An empty host
-  * is rejected as well, because a tunnel needs a destination.
+  * The ABNF permits an empty host and an empty port. RFC 9110, section 9.3.6, requires rejecting an
+  * empty port. An empty host is rejected as well, because a tunnel needs a destination.
   *
   * Instances can only be created through [[AuthorityForm.fromString]]. The host keeps its original
   * spelling. The port is stored as a number, so leading zeros are not preserved.
@@ -185,9 +183,9 @@ object AuthorityForm {
 
   /** Creates an [[AuthorityForm]] from a raw request target.
     *
-    * Checks, in this order, that the target is not empty, that it contains a `:`, that the host is
-    * a non-empty registered name, that the port is not empty and consists only of ASCII digits, and
-    * that the port is at most 65535. Returns the first error found.
+    * Checks, in this order, that the target is not empty, that it contains a `:`, that the port is
+    * not empty and consists only of ASCII digits, that the port is at most 65535, and that the host
+    * is valid. Returns the first error found.
     *
     * @param rawRequestTarget
     *   the non-null raw request target
@@ -222,23 +220,34 @@ case object AsteriskForm extends RequestTarget {
 
 /** A request target in absolute form as defined in RFC 9112, section 3.2.2.
   *
-  * The grammar is `absolute-form = absolute-URI` from RFC 3986, section 4.3. The absolute form is
-  * not implemented yet. The fields are preliminary and may change.
+  * The grammar is `absolute-form = absolute-URI` with `absolute-URI = scheme ":" hier-part [ "?"
+  * query ]` from RFC 3986, section 4.3. An absolute URI has no fragment.
+  *
+  * Every instance satisfies these invariants:
+  *   - `scheme` is a valid [[Scheme]].
+  *   - `part` is a valid [[HierPart]].
+  *   - `query`, if present, contains only characters permitted in a URI query.
+  *
+  * The form follows the generic URI syntax for every scheme. Rules of a specific scheme, such as
+  * the requirements for `http` URIs in RFC 9110, section 4.2, are not applied.
+  *
+  * Instances can only be created through [[AbsoluteForm.fromString]]. All components keep their
+  * original spelling.
   *
   * @param scheme
   *   the URI scheme
   * @param part
   *   the hierarchical part of the URI
   * @param query
-  *   the query of the URI
+  *   the query without its leading `?`, or `None` if the target contains no `?`
   *
   * @author
   *   Denis-Michael Lux
   */
 final case class AbsoluteForm private (
-    scheme: String,
-    part: String,
-    query: String
+    scheme: Scheme,
+    part: HierPart,
+    query: Option[String]
 ) extends RequestTarget
 
 /** Smart constructor for [[AbsoluteForm]].
@@ -248,17 +257,70 @@ final case class AbsoluteForm private (
   */
 object AbsoluteForm {
 
+  /** Splits a raw request target at its first `:` into a scheme and the rest.
+    *
+    * A scheme cannot contain `:`, so the first `:` ends it.
+    *
+    * @param rawRequestTarget
+    *   the non-null raw request target
+    * @return
+    *   a `Right` containing the raw scheme and the raw hierarchical part with the query, or a
+    *   `Left` containing [[RequestTargetValidationError.MissingSchemeSeparator]] if the target
+    *   contains no `:`
+    */
+  private def extractScheme(
+      rawRequestTarget: String
+  ): Either[RequestTargetValidationError, (String, String)] =
+    rawRequestTarget.indexOf(':') match
+      case -1    => Left(MissingSchemeSeparator)
+      case index =>
+        Right(
+          (rawRequestTarget.substring(0, index), rawRequestTarget.substring(index + 1))
+        )
+
+  /** Splits a raw hierarchical part with query at its first `?` into a hierarchical part and an
+    * optional query.
+    *
+    * A hierarchical part cannot contain `?`, so the first `?` starts the query.
+    *
+    * @param rawHierPartAndQuery
+    *   the non-null part of the target after the scheme separator
+    * @return
+    *   the raw hierarchical part and the raw query without its `?`, or `None` as the query if there
+    *   is no `?`
+    */
+  private def extractQuery(rawHierPartAndQuery: String): (String, Option[String]) =
+    rawHierPartAndQuery.indexOf('?') match
+      case -1    => (rawHierPartAndQuery, None)
+      case index =>
+        (rawHierPartAndQuery.substring(0, index), Some(rawHierPartAndQuery.substring(index + 1)))
+
   /** Creates an [[AbsoluteForm]] from a raw request target.
     *
-    * Not implemented yet. Calling this method throws a `NotImplementedError`.
+    * Checks that the target is not empty and contains a `:`. Then splits off the query and checks,
+    * in this order, the scheme, the hierarchical part, and the query. Returns the first error
+    * found.
     *
-    * @param requestTarget
+    * @param rawRequestTarget
     *   the non-null raw request target
     * @return
     *   a `Right` containing the [[AbsoluteForm]], or a `Left` containing
     *   [[RequestTargetError.MalformedAbsoluteForm]] if the target is not a valid absolute form
     */
-  def fromString(requestTarget: String): Either[RequestTargetError, AbsoluteForm] = ???
+  def fromString(rawRequestTarget: String): Either[RequestTargetError, AbsoluteForm] = {
+    val validated = for {
+      _ <- validateTargetNotEmpty(rawRequestTarget)
+      (rawScheme, rawHierPartAndQuery) <- extractScheme(rawRequestTarget)
+      (rawHierPart, rawQuery) = extractQuery(rawHierPartAndQuery)
+      scheme <- Scheme.fromString(rawScheme).left.map(InvalidScheme.apply)
+      hierPart <- HierPart.fromString(rawHierPart).left.map(InvalidHierPart.apply)
+      _ <- rawQuery.fold[Either[RequestTargetValidationError, Unit]](Right(()))(
+        validateQueryCharacters
+      )
+    } yield AbsoluteForm(scheme, hierPart, rawQuery)
+
+    validated.left.map(MalformedAbsoluteForm.apply)
+  }
 }
 
 /** Smart constructor for [[RequestTarget]].
@@ -277,8 +339,7 @@ object RequestTarget {
     *   1. Every other target is parsed as absolute form.
     *
     * The selection resolves ambiguous targets such as `example.com:443`, which matches both the
-    * authority form and the absolute form. The absolute form is not implemented yet, so the last
-    * case currently throws a `NotImplementedError`.
+    * authority form and the absolute form.
     *
     * @param method
     *   the method of the request, which selects the permitted form
@@ -311,6 +372,15 @@ private enum RequestTargetValidationError {
 
   /** The request target is empty. */
   case EmptyTarget
+
+  /** The absolute URI contains no `:` separating its scheme from its hierarchical part. */
+  case MissingSchemeSeparator
+
+  /** The scheme of an absolute URI violates the generic URI syntax. */
+  case InvalidScheme(cause: SchemeError)
+
+  /** The hierarchical part of an absolute URI violates the generic URI syntax. */
+  case InvalidHierPart(cause: HierPartError)
 
   /** The path does not start with `/`. */
   case MissingLeadingSlash

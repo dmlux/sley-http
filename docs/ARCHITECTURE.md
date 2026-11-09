@@ -139,12 +139,21 @@ domain types:
 
 - `RequestMethod`: a value object for a case-sensitive
   HTTP token.
-- `RequestTarget`: a sealed hierarchy of request-target
-  forms. Only `OriginForm` is implemented. Other forms
-  are rejected as malformed.
+- `RequestTarget`: a sealed hierarchy of the four
+  request-target forms of RFC 9112, section 3.2:
+  `OriginForm`, `AbsoluteForm`, `AuthorityForm`, and
+  `AsteriskForm`. The method selects the form.
+- `Host`: a sealed hierarchy of URI hosts from RFC 3986,
+  section 3.2.2: `RegName`, `IPv4Address`,
+  `IPv6Address`, and `IPvFuture`. Authority form and
+  absolute form share it.
+- `Scheme` and `HierPart`: the components of an absolute
+  URI from RFC 3986. They follow the generic URI syntax
+  and do not apply scheme-specific rules.
+- `RequestVersion`: the case-sensitive `HTTP-version`
+  of RFC 9112, section 2.3.
 - `RequestLine`: the method, the request target, and the
-  protocol version. The version is still a raw string
-  and is not validated yet.
+  protocol version.
 
 Validated types are created through smart constructors
 that return `Either`. Each component has its own error

@@ -4,21 +4,21 @@ class RequestMethodSuite extends munit.FunSuite {
 
   test("HTTP method for \"GET\"") {
     assertEquals(
-      RequestMethod.fromString("GET").map(_.value),
+      RequestMethod.fromString("GET").map(_.raw),
       Right("GET")
     )
   }
 
   test("HTTP method for \"CUSTOM\"") {
     assertEquals(
-      RequestMethod.fromString("CUSTOM").map(_.value),
+      RequestMethod.fromString("CUSTOM").map(_.raw),
       Right("CUSTOM")
     )
   }
 
   test("HTTP method for \"get\"") {
     assertEquals(
-      RequestMethod.fromString("get").map(_.value),
+      RequestMethod.fromString("get").map(_.raw),
       Right("get")
     )
   }
@@ -33,14 +33,14 @@ class RequestMethodSuite extends munit.FunSuite {
   test("HTTP method for \"GE T\"") {
     assertEquals(
       RequestMethod.fromString("GE T"),
-      Left(RequestMethodError.InvalidMethodCharacters)
+      Left(RequestMethodError.InvalidCharacters)
     )
   }
 
   test("HTTP method for \"GÄT\"") {
     assertEquals(
       RequestMethod.fromString("GÄT"),
-      Left(RequestMethodError.InvalidMethodCharacters)
+      Left(RequestMethodError.InvalidCharacters)
     )
   }
 }
